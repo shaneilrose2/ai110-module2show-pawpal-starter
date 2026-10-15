@@ -3,9 +3,17 @@
 ## 1. System Design
 
 **a. Initial design**
+Core actions a user should be able to perform:
+1. Add pet
+2. Feed pet
+3. Enrichment
+4. Grooming
 
 - Briefly describe your initial UML design.
+Initially, the UML has four classes: dog, cat, pet and owner, where owner "has-a" pet (technically this could be bidirectional but since this app is designed for owners, I will use this structure). Dog and cat are child classes of pet, dog/cat "is-a" pet.
+
 - What classes did you include, and what responsibilities did you assign to each?
+The classes dog, cat, pet and owner...
 
 **b. Design changes**
 
