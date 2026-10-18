@@ -6,20 +6,32 @@
 Core actions a user should be able to perform:
 1. Add pet
 2. Feed pet
-3. View enrichment activities
-4. Update Grooming
-5. Schedule a walk
+3. View tasks
+4. Add tasks
 
 - Briefly describe your initial UML design.
-Initially, the UML has four classes: task, scheduler, pet and owner, where owner "has-a" pet (technically this could be bidirectional but since this app is designed for owners, I will use this structure). .
+Initially, the UML had four classes: task, scheduler, pet and owner, where owner "has-a" pet, scheduler creates tasks, a pet needs a task and a task has priority.
 
 - What classes did you include, and what responsibilities did you assign to each?
+**DailyPlan** is the output of the Scheduler. It displays the collection of tasks that are for that day, including the tasks that were skipped and why via explain().
+**ScheduledTask** is a task scheduled for that day which includes the start time, the pet assigned and reason the task was scheduled.
+**Priority** is enumerated and is limited to low, medium and high, which helps limit typos.
+**Task** is the general objective that needs to be completed. It has duration, frequency, priority and a boolean to show completion.
+**Owner** is responsible for the pet(s). They have limited availablitity, can add pets and view all tasks.
+**Scheduler** reads pets and tasks from owner in order to create a DailyPlan. It can prioritize tasks, detect conflicts and ensure the owners availabiltty can support the duration of the task(s). 
+**Pet** has name, age and species. It can add and remove tasks associated with it. 
 
 
 **b. Design changes**
 
-- Did your design change during implementation?
+- Did your design change during implementation? **Yes**
 - If yes, describe at least one change and why you made it.
+- **day_start:** the scheduler needed a start time to work out when each task happens.
+- **get_all_tasks()** returns **(pet, task) pairs:** each scheduled task knows its pet, this avoids a Task → Pet → Task loop.
+- **last_completed instead of completed:** a done/not-done flag never resets, repeated tasks were not recurring.
+- **is_due(on), mark_complete(on), generate_plan(on):** recurring logic and plans need to know which date they're for.
+- **fixed_time:** with tasks only placed back-to-back, nothing could overlap. Fixed-time tasks give *detect_conflicts* something real to check.
+- **SkippedTask:** explain() must say why a task was left out and for which pet.
 
 ---
 
@@ -28,12 +40,16 @@ Initially, the UML has four classes: task, scheduler, pet and owner, where owner
 **a. Constraints and priorities**
 
 - What constraints does your scheduler consider (for example: time, priority, preferences)?
+The scheduler considers: whether a task is due that day (and its possible recurrence), fixed times (e.g. meds at 08:00), task priority, the owner's total available minutes, and the owner's day start time so tasks don't overlap.
 - How did you decide which constraints mattered most?
+Fixed-time tasks come first then priority comes next, so essential care is never pushed out by optional tasks. Available time is a hard limit and preferences matter least since they affect convenience and not the pet's wellbeing. Skipped tasks roll over to the next day since they are still due.
 
 **b. Tradeoffs**
 
 - Describe one tradeoff your scheduler makes.
+A long high-priority task can extrude several shorter low-priority ones. The scheduler is greedy.
 - Why is that tradeoff reasonable for this scenario?
+Higher priority tasks such as administering medication, feeding, etc, should always replace optional tasks which can be skipped and rolled over to the next day.
 
 ---
 
@@ -41,7 +57,8 @@ Initially, the UML has four classes: task, scheduler, pet and owner, where owner
 
 **a. How you used AI**
 
-- How did you use AI tools during this project (for example: design brainstorming, debugging, refactoring)?
+- How did you use AI tools during this project (for example: design brainstorming, debugging, refactoring)? 
+I used AI throughout my entire workflow in order 
 - What kinds of prompts or questions were most helpful?
 
 **b. Judgment and verification**
