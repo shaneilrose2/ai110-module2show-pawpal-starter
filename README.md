@@ -47,11 +47,22 @@ pip install -r requirements.txt
 Paste a sample of your app's CLI or Streamlit output here so a reader can see what a generated plan looks like:
 
 ```
-# e.g.:
-# Daily plan for Biscuit (Golden Retriever):
-#   08:00 — Morning walk (30 min) [priority: high]
-#   09:00 — Feeding (10 min) [priority: high]
-#   ...
+Today's Schedule for Jordan (Sunday, October 18)
+============================================================
+07:30-08:00  Mochi    Morning walk       [high]
+             -> High priority; fits in the available time (65 min left after this).
+08:00-08:05  Mochi    Heartworm pill     [high]
+             -> Fixed time at 08:00; high priority.
+08:05-08:25  Biscuit  Feather toy play   [medium]
+             -> Medium priority; fits in the available time (45 min left after this).
+08:25-08:40  Mochi    Brushing           [low]
+             -> Low priority; fits in the available time (30 min left after this).
+09:00-09:10  Biscuit  Breakfast          [high]
+             -> Fixed time at 09:00; high priority.
+18:00-18:10  Biscuit  Litter box         [medium]
+             -> Fixed time at 18:00; medium priority.
+
+Total: 90 of 120 available minutes used.
 ```
 
 ## 🧪 Testing PawPal+
@@ -67,7 +78,15 @@ pytest --cov
 Sample test output:
 
 ```
-# Paste your pytest output here
+==================================== test session starts ====================================
+platform win32 -- Python 3.14.8, pytest-9.1.1, pluggy-1.6.0
+rootdir: C:\Users\shane\ai110\ai110-module2show-pawpal-starter
+plugins: anyio-4.15.1
+collected 20 items                                                                           
+
+tests\test_pawpal.py ....................                                              [100%]
+
+==================================== 20 passed in 0.07s =====================================
 ```
 
 ## 📐 Smarter Scheduling

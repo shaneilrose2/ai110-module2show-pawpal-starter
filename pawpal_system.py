@@ -10,6 +10,9 @@ from datetime import date, time
 from enum import Enum
 
 
+VALID_FREQUENCIES = {"daily", "weekly", "once"}
+
+
 class Priority(Enum):
     """How important a task is. Higher value = more important."""
 
