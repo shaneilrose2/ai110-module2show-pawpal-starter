@@ -132,6 +132,10 @@ All scheduling logic lives in `pawpal_system.py`. `Scheduler.generate_plan(on)` 
 7. Mark **Mochi: Walk** complete. A message confirms it and says the next walk is due tomorrow.
 8. Stop the app (`Ctrl+C`) and run it again. Your pets, tasks and settings are still there, loaded from `pawpal_data.json`.
 
+## Screenshot of the generated schedule for today
+
+![alt text](image.png)
+
 
 ## Running main.py
 

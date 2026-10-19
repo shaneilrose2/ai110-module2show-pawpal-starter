@@ -58,13 +58,17 @@ Higher priority tasks such as administering medication, feeding, etc, should alw
 **a. How you used AI**
 
 - How did you use AI tools during this project? 
-I used AI throughout my entire workflow in order to help with design brainstorming, debugging and refactoring
+I used AI throughout my entire workflow in order to help with design brainstorming, debugging and refactoring.
 - What kinds of prompts or questions were most helpful?
+Specific requests that named the class or method, e.g. “implement Owner and Scheduler using the UML” or “what edge cases should I test?” Asking "why" was also helpful.
 
 **b. Judgment and verification**
 
 - Describe one moment where you did not accept an AI suggestion as-is.
+When the AI found the task double-completion bug, I chose which fix to apply rather than accepting its default.
+
 - How did you evaluate or verify what the AI suggested?
+I ran pytest and main.py, tested the app by hand, and compared the code against the UML.
 
 ---
 
@@ -93,11 +97,14 @@ Fixed-time tasks that exceed the available time and late completions of recurrin
 **a. What went well**
 
 - What part of this project are you most satisfied with?
+Building and testing the scheduling logic in pawpal_system.py
 
 **b. What you would improve**
 
 - If you had another iteration, what would you improve or redesign?
+Letting the owner walk multiple pets at once when their walk times overlap.
 
 **c. Key takeaway**
 
 - What is one important thing you learned about designing systems or working with AI on this project?
+I’m the architect when building with AI, so I must understand what it produces and how it works. I must not take everything at face value because it is cable of making grand mistakes.
