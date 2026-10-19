@@ -173,3 +173,32 @@ def test_complete_task_only_affects_named_pet():
 def test_empty_owner_gives_empty_plan():
     plan = Scheduler(Owner("Jordan")).generate_plan(DAY)
     assert plan.scheduled == [] and plan.skipped == []
+
+def test_sort_by_time_earliest_first_flexible_last():
+    tasks = [Task("Dinner", 10, fixed_time=time(18, 0)), Task("Play", 20),
+             Task("Meds", 5, fixed_time=time(8, 0))]
+    result = Scheduler(Owner("Jordan")).sort_by_time(tasks)
+    assert [t.title for t in result] == ["Meds", "Dinner", "Play"]
+
+
+def _two_pet_owner():
+    owner = Owner("Jordan")
+    owner.add_pet(Pet("Mochi", "dog", tasks=[Task("Walk", 30, last_completed=DAY), Task("Brush", 15)]))
+    owner.add_pet(Pet("Biscuit", "cat", tasks=[Task("Feed", 10)]))
+    return Scheduler(owner)
+
+
+def test_filter_by_pet_name():
+    result = _two_pet_owner().filter_tasks(pet_name="Biscuit")
+    assert [(p.name, t.title) for p, t in result] == [("Biscuit", "Feed")]
+
+
+def test_filter_by_completion_status():
+    scheduler = _two_pet_owner()
+    assert [t.title for _, t in scheduler.filter_tasks(completed=True, on=DAY)] == ["Walk"]
+    assert [t.title for _, t in scheduler.filter_tasks(completed=False, on=DAY)] == ["Brush", "Feed"]
+
+
+def test_filter_by_pet_and_status():
+    result = _two_pet_owner().filter_tasks(pet_name="Mochi", completed=False, on=DAY)
+    assert [t.title for _, t in result] == ["Brush"]

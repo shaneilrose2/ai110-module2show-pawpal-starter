@@ -44,6 +44,8 @@ classDiagram
         +Owner owner
         +generate_plan(on: date) DailyPlan
         +sort_by_priority(tasks: list~Task~) list~Task~
+        +sort_by_time(tasks: list~Task~) list~Task~
+        +filter_tasks(pet_name: str, completed: bool, on: date) list~tuple~
         +fit_to_time(tasks: list~Task~, minutes: int) list~Task~
         +detect_conflicts(plan: DailyPlan) list~str~
         +complete_task(pet_name: str, title: str, on: date) None

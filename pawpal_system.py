@@ -10,15 +10,15 @@ from datetime import date, time
 from enum import Enum
 
 
-VALID_FREQUENCIES = {"daily", "weekly", "once"}
-
-
 class Priority(Enum):
     """How important a task is. Higher value = more important."""
 
     LOW = 1
     MEDIUM = 2
     HIGH = 3
+
+
+VALID_FREQUENCIES = ("daily", "weekly", "once")
 
 
 @dataclass
@@ -154,6 +154,7 @@ class DailyPlan:
         """Return a readable explanation of the plan and why tasks were chosen or skipped."""
         pass
 
+
 def _to_minutes(t: time) -> int:
     """Minutes after midnight, e.g. 08:30 -> 510."""
     return t.hour * 60 + t.minute
@@ -163,7 +164,9 @@ def _to_time(minutes: int) -> time:
     """Inverse of _to_minutes, e.g. 510 -> 08:30."""
     return time(minutes // 60, minutes % 60)
 
+
 MINUTES_PER_DAY = 24 * 60
+
 
 @dataclass
 class Scheduler:
@@ -226,6 +229,32 @@ class Scheduler:
         Ties go to the shorter task, so more tasks fit in the day.
         """
         return sorted(tasks, key=lambda t: (-t.priority.value, t.duration_minutes))
+
+    def sort_by_time(self, tasks: list[Task]) -> list[Task]:
+        """Return tasks ordered by fixed_time, earliest first.
+
+        Tasks without a fixed time go last, in alphabetical order.
+        """
+        return sorted(tasks, key=lambda t: (t.fixed_time is None, t.fixed_time or time.max, t.title))
+
+    def filter_tasks(
+        self,
+        pet_name: str | None = None,
+        completed: bool | None = None,
+        on: date | None = None,
+    ) -> list[tuple[Pet, Task]]:
+        """Return (pet, task) pairs across all pets that match every filter given.
+
+        pet_name: only that pet's tasks. completed: True for tasks done on `on`
+        (default today), False for tasks not done that day. None skips a filter.
+        """
+        on = on or date.today()
+        return [
+            (pet, task)
+            for pet, task in self.owner.get_all_tasks()
+            if (pet_name is None or pet.name == pet_name)
+            and (completed is None or (task.last_completed == on) == completed)
+        ]
 
     def fit_to_time(self, tasks: list[Task], minutes: int) -> list[Task]:
         """Return the tasks that fit within the given number of minutes.
