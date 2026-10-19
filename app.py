@@ -16,17 +16,6 @@ for their pet(s) based on constraints like time, priority, and preferences.
 """
     )
 
-with st.expander("What you need to build", expanded=True):
-    st.markdown(
-        """
-At minimum, your system should:
-- Represent pet care tasks (what needs to happen, how long it takes, priority)
-- Represent the pet and the owner (basic info and preferences)
-- Build a plan/schedule for a day that chooses and orders tasks based on constraints
-- Explain the plan (why each task was chosen and when it happens)
-"""
-    )
-
 st.divider()
 
 # --- Owner (kept in session_state so it survives reruns) ---
@@ -95,23 +84,75 @@ else:
                 ))
                 st.success(f"Added '{task_title.strip()}' for {pet.name}.")
 
-# --- Current tasks across all pets ---
-all_tasks = owner.get_all_tasks()
-if all_tasks:
-    st.write("Current tasks:")
-    st.table([
-        {
-            "pet": pet.name,
-            "task": task.title,
-            "minutes": task.duration_minutes,
-            "priority": task.priority.name.lower(),
-            "frequency": task.frequency,
-            "fixed time": task.fixed_time.strftime("%H:%M") if task.fixed_time else "",
-        }
-        for pet, task in all_tasks
-    ])
-else:
+# --- Current tasks: filtered and sorted by the Scheduler ---
+today = date.today()
+scheduler = Scheduler(owner)
+
+
+def status_of(task: Task) -> str:
+    if task.last_completed:
+        return f"✅ done {task.last_completed:%b %d}"
+    if task.due_date and task.due_date > today:
+        return f"🗓️ due {task.due_date:%b %d}"
+    return "⏳ to do"
+
+
+st.subheader("Tasks")
+if not owner.get_all_tasks():
     st.info("No tasks yet. Add one above.")
+else:
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        pet_filter = st.selectbox("Pet", ["All pets"] + [p.name for p in owner.pets], key="pet_filter")
+    with col2:
+        status_filter = st.selectbox("Status", ["All", "To do", "Done today"], key="status_filter")
+    with col3:
+        sort_choice = st.selectbox("Sort by", ["Time", "Priority"], key="sort_choice")
+
+    pairs = scheduler.filter_tasks(
+        pet_name=None if pet_filter == "All pets" else pet_filter,
+        completed={"All": None, "To do": False, "Done today": True}[status_filter],
+        on=today,
+    )
+    pet_of = {id(task): pet for pet, task in pairs}
+    sort = scheduler.sort_by_time if sort_choice == "Time" else scheduler.sort_by_priority
+    tasks = sort([task for _, task in pairs])
+
+    if tasks:
+        st.table([
+            {
+                "time": task.fixed_time.strftime("%H:%M") if task.fixed_time else "flexible",
+                "pet": pet_of[id(task)].name,
+                "task": task.title,
+                "minutes": task.duration_minutes,
+                "priority": task.priority.name.lower(),
+                "repeats": task.frequency,
+                "status": status_of(task),
+            }
+            for task in tasks
+        ])
+        st.caption(f"Showing {len(tasks)} task(s), sorted by {sort_choice.lower()}.")
+    else:
+        st.info("No tasks match these filters.")
+
+    # --- Mark a task complete ---
+    due_today = scheduler.filter_tasks(completed=False, on=today)
+    due_today = [(pet, task) for pet, task in due_today if task.is_due(today)]
+    if due_today:
+        with st.form("complete_form"):
+            labels = [f"{pet.name}: {task.title}" for pet, task in due_today]
+            choice = st.selectbox("Mark a task done", labels)
+            if st.form_submit_button("Mark complete"):
+                pet, task = due_today[labels.index(choice)]
+                try:
+                    next_task = scheduler.complete_task(pet.name, task.title, today)
+                    if next_task:
+                        st.success(f"Completed {task.title} for {pet.name}. "
+                                   f"Next one is due {next_task.due_date:%A, %B %d}.")
+                    else:
+                        st.success(f"Completed {task.title} for {pet.name}.")
+                except ValueError as e:
+                    st.warning(str(e))
 
 st.divider()
 
@@ -119,28 +160,39 @@ st.divider()
 st.subheader("Build Schedule")
 
 if st.button("Generate schedule"):
-    today = date.today()
-    scheduler = Scheduler(owner)
     plan = scheduler.generate_plan(today)
+    conflicts = scheduler.detect_conflicts(plan)
+    used = sum(item.task.duration_minutes for item in plan.scheduled)
 
     if not plan.scheduled:
         st.warning("Nothing to schedule today.")
     else:
-        st.markdown(f"**Today's schedule ({today:%A, %B %d})**")
+        st.success(
+            f"Scheduled {len(plan.scheduled)} task(s) for {today:%A, %B %d}: "
+            f"{used} of {owner.available_minutes} available minutes used."
+        )
         st.table([
             {
                 "time": item.start_time.strftime("%H:%M"),
                 "pet": item.pet.name,
                 "task": item.task.title,
                 "minutes": item.task.duration_minutes,
+                "priority": item.task.priority.name.lower(),
                 "why": item.reason,
             }
             for item in plan.scheduled
         ])
-        used = sum(item.task.duration_minutes for item in plan.scheduled)
-        st.caption(f"{used} of {owner.available_minutes} available minutes used.")
 
-    for item in plan.skipped:
-        st.warning(f"Skipped {item.task.title} ({item.pet.name}): {item.reason}")
-    for warning in scheduler.detect_conflicts(plan):
-        st.error(warning)
+    if conflicts:
+        st.warning(f"⚠️ {len(conflicts)} time conflict(s). Consider moving one of these tasks:")
+        for conflict in conflicts:
+            st.warning(conflict)
+    elif plan.scheduled:
+        st.success("No time conflicts.")
+
+    if plan.skipped:
+        st.markdown("**Skipped today**")
+        st.table([
+            {"pet": item.pet.name, "task": item.task.title, "reason": item.reason}
+            for item in plan.skipped
+        ])

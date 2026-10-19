@@ -69,24 +69,25 @@ Total: 90 of 120 available minutes used.
 
 ```bash
 # Run the full test suite:
-pytest
+py -m pytest
 
-# Run with coverage:
-pytest --cov
 ```
+
+I tested sorting, filtering, time limits, conflict detection, recurring tasks and invalid input across various pytest tests, covering both normal use and edge cases.
+Confidence level: 4.5 stars
 
 Sample test output:
 
 ```
-==================================== test session starts ====================================
+================================== test session starts ==================================
 platform win32 -- Python 3.14.8, pytest-9.1.1, pluggy-1.6.0
 rootdir: C:\Users\shane\ai110\ai110-module2show-pawpal-starter
 plugins: anyio-4.15.1
-collected 20 items                                                                           
+collected 38 items                                                                       
 
-tests\test_pawpal.py ....................                                              [100%]
+tests\test_pawpal.py ......................................                        [100%]
 
-==================================== 20 passed in 0.07s =====================================
+================================== 38 passed in 0.11s ===================================
 ```
 
 ## 📐 Smarter Scheduling
@@ -123,10 +124,15 @@ All scheduling logic lives in `pawpal_system.py`. `Scheduler.generate_plan(on)` 
 
 Describe your app in numbered steps so a reader can follow along without watching a video:
 
-1. <!-- Describe this step -->
-2. <!-- Describe this step -->
-3. <!-- Describe this step -->
-4. <!-- Describe this step -->
-5. <!-- Add more steps as needed -->
+## 📸 Demo Walkthrough
 
-**Screenshot or video** *(optional)*: <!-- Insert a screenshot or link to a demo video here -->
+Describe your app in numbered steps so a reader can follow along without watching a video:
+
+1. Run `streamlit run app.py`. Set available minutes to `60` and the day start to `08:00`.
+2. Add two pets: **Mochi** (dog) and **Biscuit** (cat).
+3. Add tasks: Mochi **Meds** (5 min, high, 08:10), Biscuit **Feed** (10 min, high, 08:12), Mochi **Walk** (30 min, high), Biscuit **Groom** (40 min, low).
+4. In **Tasks**, switch *Sort by* between Time and Priority, and filter by pet.
+5. Click **Generate schedule**. The plan shows Meds 08:10, Feed 08:12 and Walk 08:22, each with a reason.
+6. A warning flags that Meds and Feed overlap, and Groom is listed as skipped (not enough time).
+7. Mark **Mochi: Walk** complete. A message confirms it and says the next walk is due tomorrow.
+

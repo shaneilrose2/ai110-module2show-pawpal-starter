@@ -1,14 +1,11 @@
 classDiagram
-    %% PawPal+ design. Keep this file updated so it matches your final implementation.
-
     class Owner {
         +str name
         +int available_minutes
-        +time day_start
         +list~str~ preferences
         +list~Pet~ pets
         +add_pet(pet: Pet) None
-        +get_all_tasks() list~tuple~
+        +get_all_tasks() list~Task~
     }
 
     class Pet {
@@ -27,10 +24,9 @@ classDiagram
         +Priority priority
         +str frequency
         +str preferred_time
-        +time fixed_time
-        +date last_completed
-        +mark_complete(on: date) None
-        +is_due(on: date) bool
+        +bool completed
+        +mark_complete() None
+        +is_due_today() bool
     }
 
     class Priority {
@@ -42,19 +38,16 @@ classDiagram
 
     class Scheduler {
         +Owner owner
-        +generate_plan(on: date) DailyPlan
+        +generate_plan() DailyPlan
         +sort_by_priority(tasks: list~Task~) list~Task~
-        +sort_by_time(tasks: list~Task~) list~Task~
-        +filter_tasks(pet_name: str, completed: bool, on: date) list~tuple~
         +fit_to_time(tasks: list~Task~, minutes: int) list~Task~
         +detect_conflicts(plan: DailyPlan) list~str~
-        +complete_task(pet_name: str, title: str, on: date) None
     }
 
     class DailyPlan {
         +date date
         +list~ScheduledTask~ scheduled
-        +list~SkippedTask~ skipped
+        +list~Task~ skipped
         +total_minutes() int
         +explain() str
     }
@@ -67,20 +60,11 @@ classDiagram
         +end_time() time
     }
 
-    class SkippedTask {
-        +Task task
-        +Pet pet
-        +str reason
-    }
-
     Owner "1" o-- "*" Pet : owns
     Pet "1" *-- "*" Task : needs
     Task --> Priority : has
     Scheduler --> Owner : reads pets and tasks from
     Scheduler ..> DailyPlan : creates
     DailyPlan "1" *-- "*" ScheduledTask : contains
-    DailyPlan "1" *-- "*" SkippedTask : contains
     ScheduledTask --> Task : schedules
     ScheduledTask --> Pet : for
-    SkippedTask --> Task : skips
-    SkippedTask --> Pet : for

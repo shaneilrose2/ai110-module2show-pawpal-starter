@@ -57,8 +57,8 @@ Higher priority tasks such as administering medication, feeding, etc, should alw
 
 **a. How you used AI**
 
-- How did you use AI tools during this project (for example: design brainstorming, debugging, refactoring)? 
-I used AI throughout my entire workflow in order 
+- How did you use AI tools during this project? 
+I used AI throughout my entire workflow in order to help with design brainstorming, debugging and refactoring
 - What kinds of prompts or questions were most helpful?
 
 **b. Judgment and verification**
@@ -73,12 +73,18 @@ I used AI throughout my entire workflow in order
 **a. What you tested**
 
 - What behaviors did you test?
+Sorting (priority and time), filtering (by pet and status), staying within available time, conflict detection, recurring tasks, and invalid input.
+
 - Why were these tests important?
+They prove the scheduler's decisions follow the rules and let me change code safely. Edge-case tests caught a real bug: completing a task twice in one day skipped the next day's task.
 
 **b. Confidence**
 
 - How confident are you that your scheduler works correctly?
+4.5/5. All features are tested and pass.
+
 - What edge cases would you test next if you had more time?
+Fixed-time tasks that exceed the available time and late completions of recurring tasks.
 
 ---
 
