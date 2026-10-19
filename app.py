@@ -1,38 +1,80 @@
 from datetime import date, time
+from pathlib import Path
 
+import pandas as pd
 import streamlit as st
 
-from pawpal_system import Owner, Pet, Priority, Scheduler, Task
+from pawpal_system import Owner, Pet, Priority, Scheduler, Task, load_owner, save_owner
+
+DATA_FILE = Path(__file__).parent / "pawpal_data.json"
 
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 
+PRIORITY_BADGE = {"high": "🔴 high", "medium": "🟡 medium", "low": "🟢 low"}
+PRIORITY_COLOR = {
+    "🔴 high": "background-color: rgba(255, 75, 75, 0.15)",
+    "🟡 medium": "background-color: rgba(255, 193, 7, 0.15)",
+    "🟢 low": "background-color: rgba(40, 167, 69, 0.15)",
+}
+
+
+def badge(priority: Priority) -> str:
+    return PRIORITY_BADGE[priority.name.lower()]
+
+
+def show_table(rows: list[dict]) -> None:
+    """Show rows as a clean table; the priority column (if any) is color-coded."""
+    df = pd.DataFrame(rows)
+    if "priority" in df.columns:
+        df = df.style.map(lambda v: PRIORITY_COLOR.get(v, ""), subset=["priority"])
+    st.dataframe(df, hide_index=True)
+
+
 st.title("🐾 PawPal+")
 
-with st.expander("Scenario", expanded=True):
+st.caption("Plan your pets' care around your day: priorities, fixed times and recurring tasks.")
+
+with st.expander("How it works"):
     st.markdown(
         """
-**PawPal+** is a pet care planning assistant. It helps a pet owner plan care tasks
-for their pet(s) based on constraints like time, priority, and preferences.
+1. Set your **available time** and when your day starts.
+2. Add your **pets**, then their **tasks** (duration, priority, how often, optional fixed time).
+3. Click **Generate schedule**: fixed-time tasks are placed first, then the rest by priority
+   until your time runs out. Every task shows *why* it was chosen or skipped.
 """
     )
 
 st.divider()
 
-# --- Owner (kept in session_state so it survives reruns) ---
+# --- Owner: loaded from pawpal_data.json once per session, kept in session_state ---
 if "owner" not in st.session_state:
-    st.session_state.owner = Owner(name="Jordan")
+    try:
+        st.session_state.owner = load_owner(DATA_FILE) or Owner(name="Jordan")
+    except (ValueError, KeyError) as e:  # includes json.JSONDecodeError
+        st.warning(f"Couldn't read {DATA_FILE.name} ({e}); starting fresh.")
+        st.session_state.owner = Owner(name="Jordan")
 owner = st.session_state.owner
+
+
+def save() -> None:
+    """Auto-save after every change."""
+    save_owner(owner, DATA_FILE)
+
 
 st.subheader("Owner")
 col1, col2, col3 = st.columns(3)
 with col1:
-    owner.name = st.text_input("Owner name", value=owner.name)
+    name = st.text_input("Owner name", value=owner.name)
 with col2:
-    owner.available_minutes = int(st.number_input(
+    minutes = int(st.number_input(
         "Available minutes today", min_value=0, max_value=1440, value=owner.available_minutes
     ))
 with col3:
-    owner.day_start = st.time_input("Day starts at", value=owner.day_start)
+    day_start = st.time_input("Day starts at", value=owner.day_start)
+if (name, minutes, day_start) != (owner.name, owner.available_minutes, owner.day_start):
+    owner.name, owner.available_minutes, owner.day_start = name, minutes, day_start
+    save()
+st.caption(f"💾 Changes are saved automatically to `{DATA_FILE.name}`.")
 
 # --- Add a pet ---
 st.subheader("Add a Pet")
@@ -50,9 +92,16 @@ with st.form("add_pet_form", clear_on_submit=True):
         else:
             try:
                 owner.add_pet(Pet(name=pet_name.strip(), species=species, age=int(age)))
+                save()
                 st.success(f"Added {pet_name.strip()}.")
             except ValueError as e:
                 st.error(str(e))
+
+if owner.pets:
+    show_table([
+        {"pet": p.name, "species": p.species, "age": p.age, "tasks": len(p.tasks)}
+        for p in owner.pets
+    ])
 
 # --- Add a task ---
 st.subheader("Add a Task")
@@ -82,6 +131,7 @@ else:
                     frequency=frequency,
                     fixed_time=fixed_time if has_fixed_time else None,
                 ))
+                save()
                 st.success(f"Added '{task_title.strip()}' for {pet.name}.")
 
 # --- Current tasks: filtered and sorted by the Scheduler ---
@@ -119,13 +169,13 @@ else:
     tasks = sort([task for _, task in pairs])
 
     if tasks:
-        st.table([
+        show_table([
             {
                 "time": task.fixed_time.strftime("%H:%M") if task.fixed_time else "flexible",
                 "pet": pet_of[id(task)].name,
                 "task": task.title,
                 "minutes": task.duration_minutes,
-                "priority": task.priority.name.lower(),
+                "priority": badge(task.priority),
                 "repeats": task.frequency,
                 "status": status_of(task),
             }
@@ -146,6 +196,7 @@ else:
                 pet, task = due_today[labels.index(choice)]
                 try:
                     next_task = scheduler.complete_task(pet.name, task.title, today)
+                    save()
                     if next_task:
                         st.success(f"Completed {task.title} for {pet.name}. "
                                    f"Next one is due {next_task.due_date:%A, %B %d}.")
@@ -171,13 +222,19 @@ if st.button("Generate schedule"):
             f"Scheduled {len(plan.scheduled)} task(s) for {today:%A, %B %d}: "
             f"{used} of {owner.available_minutes} available minutes used."
         )
-        st.table([
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Scheduled", len(plan.scheduled))
+        m2.metric("Minutes used", f"{used} / {owner.available_minutes}")
+        m3.metric("Conflicts", len(conflicts))
+        m4.metric("Skipped", len(plan.skipped))
+        st.progress(min(used / owner.available_minutes, 1.0) if owner.available_minutes else 0.0)
+        show_table([
             {
                 "time": item.start_time.strftime("%H:%M"),
                 "pet": item.pet.name,
                 "task": item.task.title,
                 "minutes": item.task.duration_minutes,
-                "priority": item.task.priority.name.lower(),
+                "priority": badge(item.task.priority),
                 "why": item.reason,
             }
             for item in plan.scheduled
@@ -192,7 +249,7 @@ if st.button("Generate schedule"):
 
     if plan.skipped:
         st.markdown("**Skipped today**")
-        st.table([
+        show_table([
             {"pet": item.pet.name, "task": item.task.title, "reason": item.reason}
             for item in plan.skipped
         ])

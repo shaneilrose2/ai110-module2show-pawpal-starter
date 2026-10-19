@@ -120,13 +120,8 @@ All scheduling logic lives in `pawpal_system.py`. `Scheduler.generate_plan(on)` 
 - **`Scheduler.complete_task(pet_name, title, on)`** completes the pet's open task and adds the next occurrence to the same pet. The completed copy stays as history.
 - The next due date counts from the completion date, so a task done late shifts its cycle.
 
-## 📸 Demo Walkthrough
-
-Describe your app in numbered steps so a reader can follow along without watching a video:
 
 ## 📸 Demo Walkthrough
-
-Describe your app in numbered steps so a reader can follow along without watching a video:
 
 1. Run `streamlit run app.py`. Set available minutes to `60` and the day start to `08:00`.
 2. Add two pets: **Mochi** (dog) and **Biscuit** (cat).
@@ -135,4 +130,71 @@ Describe your app in numbered steps so a reader can follow along without watchin
 5. Click **Generate schedule**. The plan shows Meds 08:10, Feed 08:12 and Walk 08:22, each with a reason.
 6. A warning flags that Meds and Feed overlap, and Groom is listed as skipped (not enough time).
 7. Mark **Mochi: Walk** complete. A message confirms it and says the next walk is due tomorrow.
+8. Stop the app (`Ctrl+C`) and run it again. Your pets, tasks and settings are still there, loaded from `pawpal_data.json`.
 
+
+## Running main.py
+
+```
+All tasks (unsorted, as stored on each pet)
+------------------------------------------------------------
+  flexible  Mochi    Brushing           [low, to do]
+  17:30     Mochi    Evening walk       [medium, to do]
+  08:00     Mochi    Heartworm pill     [high, done]
+  flexible  Mochi    Morning walk       [high, to do]
+  08:00     Mochi    Heartworm pill     [high, to do]
+  18:00     Biscuit  Litter box         [medium, to do]
+  09:00     Biscuit  Breakfast          [high, to do]
+  flexible  Biscuit  Feather toy play   [medium, to do]
+
+Sorted by time (sort_by_time)
+------------------------------------------------------------
+  08:00     Mochi    Heartworm pill     [high, done]
+  08:00     Mochi    Heartworm pill     [high, to do]
+  09:00     Biscuit  Breakfast          [high, to do]
+  17:30     Mochi    Evening walk       [medium, to do]
+  18:00     Biscuit  Litter box         [medium, to do]
+  flexible  Mochi    Brushing           [low, to do]
+  flexible  Biscuit  Feather toy play   [medium, to do]
+  flexible  Mochi    Morning walk       [high, to do]
+
+Only Biscuit's tasks (filter_tasks pet_name='Biscuit')
+------------------------------------------------------------
+  18:00     Biscuit  Litter box         [medium, to do]
+  09:00     Biscuit  Breakfast          [high, to do]
+  flexible  Biscuit  Feather toy play   [medium, to do]
+
+Completed today (filter_tasks completed=True)
+------------------------------------------------------------
+  08:00     Mochi    Heartworm pill     [high, done]
+
+Mochi's tasks still to do (pet_name='Mochi', completed=False)
+------------------------------------------------------------
+  flexible  Mochi    Brushing           [low, to do]
+  17:30     Mochi    Evening walk       [medium, to do]
+  flexible  Mochi    Morning walk       [high, to do]
+  08:00     Mochi    Heartworm pill     [high, to do]
+
+Today's Schedule for Jordan (Sunday, October 18)
+============================================================
+07:30-08:00  Mochi    Morning walk       [high]
+             -> High priority; fits in the available time (40 min left after this).
+08:00-08:20  Biscuit  Feather toy play   [medium]
+             -> Medium priority; fits in the available time (20 min left after this).
+08:20-08:35  Mochi    Brushing           [low]
+             -> Low priority; fits in the available time (5 min left after this).
+09:00-09:10  Biscuit  Breakfast          [high]
+             -> Fixed time at 09:00; high priority.
+17:30-18:00  Mochi    Evening walk       [medium]
+             -> Fixed time at 17:30; medium priority.
+18:00-18:10  Biscuit  Litter box         [medium]
+             -> Fixed time at 18:00; medium priority.
+
+Total: 115 of 120 available minutes used.
+```
+
+
+## Stretch Features
+- Professional UI and output formatting
+- Advanced scheduling logic
+- Data persistence layer

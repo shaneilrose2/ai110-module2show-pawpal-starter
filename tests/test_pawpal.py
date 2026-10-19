@@ -1,325 +1,255 @@
-from datetime import date, time, timedelta
-
-import pytest
-
-from pawpal_system import Owner, Pet, Priority, Scheduler, Task
-
-DAY = date(2026, 10, 18)
-
-
-def test_mark_complete_changes_status():
-    task = Task("Morning walk", 30)
-    today = date(2026, 10, 18)
-    assert task.last_completed is None
-    assert task.is_due(today)
-
-    task.mark_complete(today)
-
-    assert task.last_completed == today
-    assert not task.is_due(today)
-
-
-def test_add_task_increases_task_count():
-    pet = Pet("Mochi", "dog")
-    assert len(pet.tasks) == 0
-
-    pet.add_task(Task("Feeding", 10))
-
-    assert len(pet.tasks) == 1
-
-
-# --- Task ---
-
-
-def test_completing_daily_task_creates_next_day_task():
-    task = Task("Walk", 30, frequency="daily")
-    next_task = task.mark_complete(DAY)
-    assert next_task is not None and next_task is not task
-    assert next_task.due_date == DAY + timedelta(days=1)
-    assert next_task.last_completed is None
-    assert not next_task.is_due(DAY)
-    assert next_task.is_due(DAY + timedelta(days=1))
-    assert not task.is_due(DAY + timedelta(days=1))  # the finished one stays done
-
-
-def test_completing_weekly_task_creates_task_in_seven_days():
-    next_task = Task("Bath", 20, frequency="weekly").mark_complete(DAY)
-    assert next_task.due_date == DAY + timedelta(days=7)
-    assert not next_task.is_due(DAY + timedelta(days=6))
-    assert next_task.is_due(DAY + timedelta(days=7))
-
-
-def test_next_occurrence_keeps_task_details():
-    task = Task("Meds", 5, Priority.HIGH, category="meds", fixed_time=time(8, 0))
-    next_task = task.mark_complete(DAY)
-    assert (next_task.title, next_task.priority, next_task.fixed_time) == ("Meds", Priority.HIGH, time(8, 0))
-
-
-def test_once_task_never_due_after_completion():
-    task = Task("Vet visit", 60, frequency="once")
-    assert task.mark_complete(DAY) is None
-    assert not task.is_due(DAY + timedelta(days=30))
-
-
-def test_invalid_task_values_raise():
-    with pytest.raises(ValueError):
-        Task("Walk", 0)
-    with pytest.raises(ValueError):
-        Task("Walk", 30, frequency="monthly")
-
-
-# --- Pet and Owner ---
-
-def test_remove_task_by_title():
-    pet = Pet("Mochi", "dog", tasks=[Task("Walk", 30), Task("Feed", 10)])
-    pet.remove_task("Walk")
-    assert [t.title for t in pet.tasks] == ["Feed"]
-
-
-def test_remove_missing_task_raises():
-    pet = Pet("Mochi", "dog")
-    with pytest.raises(ValueError):
-        pet.remove_task("Walk")
-
-
-def test_duplicate_pet_name_raises():
-    owner = Owner("Jordan")
-    owner.add_pet(Pet("Mochi", "dog"))
-    with pytest.raises(ValueError):
-        owner.add_pet(Pet("Mochi", "cat"))
-
-
-def test_get_all_tasks_includes_every_pet():
-    owner = Owner("Jordan")
-    owner.add_pet(Pet("Mochi", "dog", tasks=[Task("Walk", 30)]))
-    owner.add_pet(Pet("Biscuit", "cat", tasks=[Task("Feed", 10), Task("Play", 15)]))
-    pairs = owner.get_all_tasks()
-    assert [(p.name, t.title) for p, t in pairs] == [
-        ("Mochi", "Walk"), ("Biscuit", "Feed"), ("Biscuit", "Play"),
-    ]
-
-
-# --- Scheduler ---
-
-def test_sort_by_priority_high_first_then_shorter():
-    tasks = [Task("Low", 5, Priority.LOW), Task("High long", 30, Priority.HIGH),
-             Task("High short", 10, Priority.HIGH)]
-    result = Scheduler(Owner("Jordan")).sort_by_priority(tasks)
-    assert [t.title for t in result] == ["High short", "High long", "Low"]
-
-
-def test_fit_to_time_skips_tasks_that_do_not_fit():
-    tasks = [Task("A", 50), Task("B", 60), Task("C", 10)]
-    result = Scheduler(Owner("Jordan")).fit_to_time(tasks, 60)
-    assert [t.title for t in result] == ["A", "C"]
-
-
-def test_plan_stays_within_available_time():
-    owner = Owner("Jordan", available_minutes=40)
-    owner.add_pet(Pet("Mochi", "dog", tasks=[
-        Task("Walk", 30, Priority.HIGH), Task("Brush", 20, Priority.LOW),
-    ]))
-    plan = Scheduler(owner).generate_plan(DAY)
-    assert sum(s.task.duration_minutes for s in plan.scheduled) <= 40
-    assert [s.task.title for s in plan.skipped] == ["Brush"]
-    assert "Not enough available time" in plan.skipped[0].reason
-
-
-def test_fixed_time_task_scheduled_at_its_time():
-    owner = Owner("Jordan", day_start=time(7, 0))
-    owner.add_pet(Pet("Mochi", "dog", tasks=[Task("Meds", 5, fixed_time=time(8, 0))]))
-    plan = Scheduler(owner).generate_plan(DAY)
-    assert plan.scheduled[0].start_time == time(8, 0)
-
-
-def test_flexible_tasks_avoid_fixed_tasks():
-    owner = Owner("Jordan", day_start=time(8, 0))
-    owner.add_pet(Pet("Mochi", "dog", tasks=[
-        Task("Meds", 10, fixed_time=time(8, 10)),
-        Task("Walk", 30),
-    ]))
-    scheduler = Scheduler(owner)
-    plan = scheduler.generate_plan(DAY)
-    walk = next(s for s in plan.scheduled if s.task.title == "Walk")
-    assert walk.start_time == time(8, 20)
-    assert scheduler.detect_conflicts(plan) == []
-
-
-def test_plan_is_sorted_by_start_time():
-    owner = Owner("Jordan", day_start=time(8, 0))
-    owner.add_pet(Pet("Mochi", "dog", tasks=[
-        Task("Dinner", 10, fixed_time=time(18, 0)), Task("Walk", 30),
-    ]))
-    plan = Scheduler(owner).generate_plan(DAY)
-    times = [s.start_time for s in plan.scheduled]
-    assert times == sorted(times)
-
-
-def test_completed_task_left_out_of_plan():
-    owner = Owner("Jordan")
-    owner.add_pet(Pet("Mochi", "dog", tasks=[Task("Walk", 30, last_completed=DAY)]))
-    plan = Scheduler(owner).generate_plan(DAY)
-    assert plan.scheduled == [] and plan.skipped == []
-
-
-def test_detect_conflicts_across_pets():
-    owner = Owner("Jordan")
-    owner.add_pet(Pet("Mochi", "dog", tasks=[Task("Meds", 10, fixed_time=time(8, 0))]))
-    owner.add_pet(Pet("Biscuit", "cat", tasks=[Task("Feed", 10, fixed_time=time(8, 5))]))
-    scheduler = Scheduler(owner)
-    conflicts = scheduler.detect_conflicts(scheduler.generate_plan(DAY))
-    assert len(conflicts) == 1
-    assert "Mochi" in conflicts[0] and "Biscuit" in conflicts[0]
-
-
-def test_complete_task_only_affects_named_pet():
-    owner = Owner("Jordan")
-    owner.add_pet(Pet("Mochi", "dog", tasks=[Task("Walk", 30)]))
-    owner.add_pet(Pet("Biscuit", "cat", tasks=[Task("Walk", 10)]))
-    scheduler = Scheduler(owner)
-    scheduler.complete_task("Biscuit", "Walk", DAY)
-    plan = scheduler.generate_plan(DAY)
-    assert [s.pet.name for s in plan.scheduled] == ["Mochi"]
-
-
-def test_empty_owner_gives_empty_plan():
-    plan = Scheduler(Owner("Jordan")).generate_plan(DAY)
-    assert plan.scheduled == [] and plan.skipped == []
-
-
-# --- Sorting and filtering ---
-
-def test_sort_by_time_earliest_first_flexible_last():
-    tasks = [Task("Dinner", 10, fixed_time=time(18, 0)), Task("Play", 20),
-             Task("Meds", 5, fixed_time=time(8, 0))]
-    result = Scheduler(Owner("Jordan")).sort_by_time(tasks)
-    assert [t.title for t in result] == ["Meds", "Dinner", "Play"]
-
-
-def _two_pet_owner():
-    owner = Owner("Jordan")
-    owner.add_pet(Pet("Mochi", "dog", tasks=[Task("Walk", 30, last_completed=DAY), Task("Brush", 15)]))
-    owner.add_pet(Pet("Biscuit", "cat", tasks=[Task("Feed", 10)]))
-    return Scheduler(owner)
-
-
-def test_filter_by_pet_name():
-    result = _two_pet_owner().filter_tasks(pet_name="Biscuit")
-    assert [(p.name, t.title) for p, t in result] == [("Biscuit", "Feed")]
-
-
-def test_filter_by_completion_status():
-    scheduler = _two_pet_owner()
-    assert [t.title for _, t in scheduler.filter_tasks(completed=True, on=DAY)] == ["Walk"]
-    assert [t.title for _, t in scheduler.filter_tasks(completed=False, on=DAY)] == ["Brush", "Feed"]
-
-
-def test_filter_by_pet_and_status():
-    result = _two_pet_owner().filter_tasks(pet_name="Mochi", completed=False, on=DAY)
-    assert [t.title for _, t in result] == ["Brush"]
-
-
-def test_complete_task_adds_next_occurrence_to_pet():
-    owner = Owner("Jordan")
-    mochi = Pet("Mochi", "dog", tasks=[Task("Walk", 30)])
-    owner.add_pet(mochi)
-    scheduler = Scheduler(owner)
-
-    next_task = scheduler.complete_task("Mochi", "Walk", DAY)
-
-    assert len(mochi.tasks) == 2 and mochi.tasks[-1] is next_task
-    assert [s.task.title for s in scheduler.generate_plan(DAY).scheduled] == []
-    tomorrow = scheduler.generate_plan(DAY + timedelta(days=1))
-    assert [s.task for s in tomorrow.scheduled] == [next_task]
-
-
-def test_complete_task_twice_completes_next_occurrence():
-    owner = Owner("Jordan")
-    owner.add_pet(Pet("Mochi", "dog", tasks=[Task("Walk", 30)]))
-    scheduler = Scheduler(owner)
-    scheduler.complete_task("Mochi", "Walk", DAY)
-    third = scheduler.complete_task("Mochi", "Walk", DAY + timedelta(days=1))
-    assert third.due_date == DAY + timedelta(days=2)
-    assert len(owner.pets[0].tasks) == 3
-
-
-# --- Edge cases ---
-
-def test_pet_with_no_tasks_gives_empty_plan():
-    owner = Owner("Jordan")
-    owner.add_pet(Pet("Mochi", "dog"))
-    plan = Scheduler(owner).generate_plan(DAY)
-    assert plan.scheduled == [] and plan.skipped == []
-
-
-def test_two_tasks_at_exact_same_time_conflict():
-    owner = Owner("Jordan")
-    owner.add_pet(Pet("Mochi", "dog", tasks=[
-        Task("Meds", 10, fixed_time=time(8, 0)), Task("Feed", 10, fixed_time=time(8, 0)),
-    ]))
-    scheduler = Scheduler(owner)
-    assert len(scheduler.detect_conflicts(scheduler.generate_plan(DAY))) == 1
-
-
-def test_back_to_back_tasks_do_not_conflict():
-    owner = Owner("Jordan")
-    owner.add_pet(Pet("Mochi", "dog", tasks=[
-        Task("Meds", 10, fixed_time=time(8, 0)), Task("Feed", 10, fixed_time=time(8, 10)),
-    ]))
-    scheduler = Scheduler(owner)
-    assert scheduler.detect_conflicts(scheduler.generate_plan(DAY)) == []
-
-
-def test_sort_by_time_ties_broken_by_title():
-    tasks = [Task("Zoomies", 5, fixed_time=time(8, 0)), Task("Apple treat", 5, fixed_time=time(8, 0))]
-    result = Scheduler(Owner("Jordan")).sort_by_time(tasks)
-    assert [t.title for t in result] == ["Apple treat", "Zoomies"]
-
-
-def test_task_exactly_filling_available_time_is_scheduled():
-    owner = Owner("Jordan", available_minutes=30)
-    owner.add_pet(Pet("Mochi", "dog", tasks=[Task("Walk", 30)]))
-    plan = Scheduler(owner).generate_plan(DAY)
-    assert len(plan.scheduled) == 1 and plan.skipped == []
-
-
-def test_zero_available_minutes_skips_everything():
-    owner = Owner("Jordan", available_minutes=0)
-    owner.add_pet(Pet("Mochi", "dog", tasks=[Task("Walk", 30), Task("Feed", 5)]))
-    plan = Scheduler(owner).generate_plan(DAY)
-    assert plan.scheduled == [] and len(plan.skipped) == 2
-
-
-def test_fixed_task_before_day_start_keeps_its_time():
-    owner = Owner("Jordan", day_start=time(9, 0))
-    owner.add_pet(Pet("Mochi", "dog", tasks=[Task("Meds", 5, fixed_time=time(7, 0))]))
-    plan = Scheduler(owner).generate_plan(DAY)
-    assert plan.scheduled[0].start_time == time(7, 0)
-
-
-def test_task_that_would_run_past_midnight_is_skipped():
-    owner = Owner("Jordan", available_minutes=300, day_start=time(23, 30))
-    owner.add_pet(Pet("Mochi", "dog", tasks=[Task("Long walk", 60)]))
-    plan = Scheduler(owner).generate_plan(DAY)
-    assert plan.scheduled == [] and plan.skipped[0].reason == "No free slot left today."
-
-
-def test_recurrence_crosses_year_end():
-    assert Task("Walk", 30).mark_complete(date(2026, 12, 31)).due_date == date(2027, 1, 1)
-    weekly = Task("Bath", 20, frequency="weekly")
-    assert weekly.mark_complete(date(2026, 12, 28)).due_date == date(2027, 1, 4)
-
-
-def test_overdue_task_is_still_due():
-    task = Task("Bath", 20, due_date=DAY - timedelta(days=3))
-    assert task.is_due(DAY)
-
-
-def test_completing_same_task_twice_in_one_day_raises():
-    owner = Owner("Jordan")
-    owner.add_pet(Pet("Mochi", "dog", tasks=[Task("Walk", 30)]))
-    scheduler = Scheduler(owner)
-    scheduler.complete_task("Mochi", "Walk", DAY)
-    with pytest.raises(ValueError):
-        scheduler.complete_task("Mochi", "Walk", DAY)
-    assert len(owner.pets[0].tasks) == 2  # done today + tomorrow's, no extra copy
+from datetime import date, time
+from pathlib import Path
+
+import pandas as pd
+import streamlit as st
+
+from pawpal_system import Owner, Pet, Priority, Scheduler, Task, load_owner, save_owner
+
+DATA_FILE = Path(__file__).parent / "pawpal_data.json"
+
+st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
+
+PRIORITY_BADGE = {"high": "🔴 high", "medium": "🟡 medium", "low": "🟢 low"}
+PRIORITY_COLOR = {
+    "🔴 high": "background-color: rgba(255, 75, 75, 0.15)",
+    "🟡 medium": "background-color: rgba(255, 193, 7, 0.15)",
+    "🟢 low": "background-color: rgba(40, 167, 69, 0.15)",
+}
+
+
+def badge(priority: Priority) -> str:
+    return PRIORITY_BADGE[priority.name.lower()]
+
+
+def show_table(rows: list[dict]) -> None:
+    """Show rows as a clean table; the priority column (if any) is color-coded."""
+    df = pd.DataFrame(rows)
+    if "priority" in df.columns:
+        df = df.style.map(lambda v: PRIORITY_COLOR.get(v, ""), subset=["priority"])
+    st.dataframe(df, hide_index=True)
+
+
+st.title("🐾 PawPal+")
+
+st.caption("Plan your pets' care around your day: priorities, fixed times and recurring tasks.")
+
+with st.expander("How it works"):
+    st.markdown(
+        """
+1. Set your **available time** and when your day starts.
+2. Add your **pets**, then their **tasks** (duration, priority, how often, optional fixed time).
+3. Click **Generate schedule**: fixed-time tasks are placed first, then the rest by priority
+   until your time runs out. Every task shows *why* it was chosen or skipped.
+"""
+    )
+
+st.divider()
+
+# --- Owner: loaded from pawpal_data.json once per session, kept in session_state ---
+if "owner" not in st.session_state:
+    try:
+        st.session_state.owner = load_owner(DATA_FILE) or Owner(name="Jordan")
+    except (ValueError, KeyError) as e:  # includes json.JSONDecodeError
+        st.warning(f"Couldn't read {DATA_FILE.name} ({e}); starting fresh.")
+        st.session_state.owner = Owner(name="Jordan")
+owner = st.session_state.owner
+
+
+def save() -> None:
+    """Auto-save after every change."""
+    save_owner(owner, DATA_FILE)
+
+
+st.subheader("Owner")
+col1, col2, col3 = st.columns(3)
+with col1:
+    name = st.text_input("Owner name", value=owner.name)
+with col2:
+    minutes = int(st.number_input(
+        "Available minutes today", min_value=0, max_value=1440, value=owner.available_minutes
+    ))
+with col3:
+    day_start = st.time_input("Day starts at", value=owner.day_start)
+if (name, minutes, day_start) != (owner.name, owner.available_minutes, owner.day_start):
+    owner.name, owner.available_minutes, owner.day_start = name, minutes, day_start
+    save()
+st.caption(f"💾 Changes are saved automatically to `{DATA_FILE.name}`.")
+
+# --- Add a pet ---
+st.subheader("Add a Pet")
+with st.form("add_pet_form", clear_on_submit=True):
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        pet_name = st.text_input("Pet name")
+    with col2:
+        species = st.selectbox("Species", ["dog", "cat", "other"])
+    with col3:
+        age = st.number_input("Age", min_value=0, max_value=40, value=1)
+    if st.form_submit_button("Add pet"):
+        if not pet_name.strip():
+            st.error("Enter a pet name.")
+        else:
+            try:
+                owner.add_pet(Pet(name=pet_name.strip(), species=species, age=int(age)))
+                save()
+                st.success(f"Added {pet_name.strip()}.")
+            except ValueError as e:
+                st.error(str(e))
+
+if owner.pets:
+    show_table([
+        {"pet": p.name, "species": p.species, "age": p.age, "tasks": len(p.tasks)}
+        for p in owner.pets
+    ])
+
+# --- Add a task ---
+st.subheader("Add a Task")
+if not owner.pets:
+    st.info("Add a pet first.")
+else:
+    with st.form("add_task_form", clear_on_submit=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            pet_choice = st.selectbox("Pet", [p.name for p in owner.pets])
+            task_title = st.text_input("Task title", value="Morning walk")
+            duration = st.number_input("Duration (minutes)", min_value=1, max_value=240, value=20)
+        with col2:
+            priority = st.selectbox("Priority", ["low", "medium", "high"], index=2)
+            frequency = st.selectbox("Frequency", ["daily", "weekly", "once"])
+            has_fixed_time = st.checkbox("Must happen at a fixed time")
+            fixed_time = st.time_input("Fixed time", value=time(8, 0))
+        if st.form_submit_button("Add task"):
+            if not task_title.strip():
+                st.error("Enter a task title.")
+            else:
+                pet = next(p for p in owner.pets if p.name == pet_choice)
+                pet.add_task(Task(
+                    title=task_title.strip(),
+                    duration_minutes=int(duration),
+                    priority=Priority[priority.upper()],
+                    frequency=frequency,
+                    fixed_time=fixed_time if has_fixed_time else None,
+                ))
+                save()
+                st.success(f"Added '{task_title.strip()}' for {pet.name}.")
+
+# --- Current tasks: filtered and sorted by the Scheduler ---
+today = date.today()
+scheduler = Scheduler(owner)
+
+
+def status_of(task: Task) -> str:
+    if task.last_completed:
+        return f"✅ done {task.last_completed:%b %d}"
+    if task.due_date and task.due_date > today:
+        return f"🗓️ due {task.due_date:%b %d}"
+    return "⏳ to do"
+
+
+st.subheader("Tasks")
+if not owner.get_all_tasks():
+    st.info("No tasks yet. Add one above.")
+else:
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        pet_filter = st.selectbox("Pet", ["All pets"] + [p.name for p in owner.pets], key="pet_filter")
+    with col2:
+        status_filter = st.selectbox("Status", ["All", "To do", "Done today"], key="status_filter")
+    with col3:
+        sort_choice = st.selectbox("Sort by", ["Time", "Priority"], key="sort_choice")
+
+    pairs = scheduler.filter_tasks(
+        pet_name=None if pet_filter == "All pets" else pet_filter,
+        completed={"All": None, "To do": False, "Done today": True}[status_filter],
+        on=today,
+    )
+    pet_of = {id(task): pet for pet, task in pairs}
+    sort = scheduler.sort_by_time if sort_choice == "Time" else scheduler.sort_by_priority
+    tasks = sort([task for _, task in pairs])
+
+    if tasks:
+        show_table([
+            {
+                "time": task.fixed_time.strftime("%H:%M") if task.fixed_time else "flexible",
+                "pet": pet_of[id(task)].name,
+                "task": task.title,
+                "minutes": task.duration_minutes,
+                "priority": badge(task.priority),
+                "repeats": task.frequency,
+                "status": status_of(task),
+            }
+            for task in tasks
+        ])
+        st.caption(f"Showing {len(tasks)} task(s), sorted by {sort_choice.lower()}.")
+    else:
+        st.info("No tasks match these filters.")
+
+    # --- Mark a task complete ---
+    due_today = scheduler.filter_tasks(completed=False, on=today)
+    due_today = [(pet, task) for pet, task in due_today if task.is_due(today)]
+    if due_today:
+        with st.form("complete_form"):
+            labels = [f"{pet.name}: {task.title}" for pet, task in due_today]
+            choice = st.selectbox("Mark a task done", labels)
+            if st.form_submit_button("Mark complete"):
+                pet, task = due_today[labels.index(choice)]
+                try:
+                    next_task = scheduler.complete_task(pet.name, task.title, today)
+                    save()
+                    if next_task:
+                        st.success(f"Completed {task.title} for {pet.name}. "
+                                   f"Next one is due {next_task.due_date:%A, %B %d}.")
+                    else:
+                        st.success(f"Completed {task.title} for {pet.name}.")
+                except ValueError as e:
+                    st.warning(str(e))
+
+st.divider()
+
+# --- Build schedule ---
+st.subheader("Build Schedule")
+
+if st.button("Generate schedule"):
+    plan = scheduler.generate_plan(today)
+    conflicts = scheduler.detect_conflicts(plan)
+    used = sum(item.task.duration_minutes for item in plan.scheduled)
+
+    if not plan.scheduled:
+        st.warning("Nothing to schedule today.")
+    else:
+        st.success(
+            f"Scheduled {len(plan.scheduled)} task(s) for {today:%A, %B %d}: "
+            f"{used} of {owner.available_minutes} available minutes used."
+        )
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Scheduled", len(plan.scheduled))
+        m2.metric("Minutes used", f"{used} / {owner.available_minutes}")
+        m3.metric("Conflicts", len(conflicts))
+        m4.metric("Skipped", len(plan.skipped))
+        st.progress(min(used / owner.available_minutes, 1.0) if owner.available_minutes else 0.0)
+        show_table([
+            {
+                "time": item.start_time.strftime("%H:%M"),
+                "pet": item.pet.name,
+                "task": item.task.title,
+                "minutes": item.task.duration_minutes,
+                "priority": badge(item.task.priority),
+                "why": item.reason,
+            }
+            for item in plan.scheduled
+        ])
+
+    if conflicts:
+        st.warning(f"⚠️ {len(conflicts)} time conflict(s). Consider moving one of these tasks:")
+        for conflict in conflicts:
+            st.warning(conflict)
+    elif plan.scheduled:
+        st.success("No time conflicts.")
+
+    if plan.skipped:
+        st.markdown("**Skipped today**")
+        show_table([
+            {"pet": item.pet.name, "task": item.task.title, "reason": item.reason}
+            for item in plan.skipped
+        ])

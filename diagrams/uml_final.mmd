@@ -9,6 +9,8 @@ classDiagram
         +list~Pet~ pets
         +add_pet(pet: Pet) None
         +get_all_tasks() list~tuple~
+        +to_dict() dict
+        +from_dict(data: dict) Owner
     }
 
     class Pet {
@@ -18,6 +20,8 @@ classDiagram
         +list~Task~ tasks
         +add_task(task: Task) None
         +remove_task(title: str) None
+        +to_dict() dict
+        +from_dict(data: dict) Pet
     }
 
     class Task {
@@ -28,9 +32,12 @@ classDiagram
         +str frequency
         +str preferred_time
         +time fixed_time
+        +date due_date
         +date last_completed
-        +mark_complete(on: date) None
+        +mark_complete(on: date) Task
         +is_due(on: date) bool
+        +to_dict() dict
+        +from_dict(data: dict) Task
     }
 
     class Priority {
@@ -48,7 +55,7 @@ classDiagram
         +filter_tasks(pet_name: str, completed: bool, on: date) list~tuple~
         +fit_to_time(tasks: list~Task~, minutes: int) list~Task~
         +detect_conflicts(plan: DailyPlan) list~str~
-        +complete_task(pet_name: str, title: str, on: date) None
+        +complete_task(pet_name: str, title: str, on: date) Task
     }
 
     class DailyPlan {

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field, replace
 from datetime import date, time, timedelta
 from enum import Enum
+from pathlib import Path
 
 
 class Priority(Enum):
@@ -61,6 +63,36 @@ class Task:
             return False
         return self.due_date is None or self.due_date <= on
 
+    def to_dict(self) -> dict:
+        """Return a JSON-friendly dict (enum, time and date stored as strings)."""
+        return {
+            "title": self.title,
+            "duration_minutes": self.duration_minutes,
+            "priority": self.priority.name,
+            "category": self.category,
+            "frequency": self.frequency,
+            "preferred_time": self.preferred_time,
+            "fixed_time": self.fixed_time.isoformat(timespec="minutes") if self.fixed_time else None,
+            "due_date": self.due_date.isoformat() if self.due_date else None,
+            "last_completed": self.last_completed.isoformat() if self.last_completed else None,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> Task:
+        """Rebuild a Task from to_dict() output."""
+        return cls(
+            title=data["title"],
+            duration_minutes=data["duration_minutes"],
+            priority=Priority[data["priority"]],
+            category=data.get("category", "general"),
+            frequency=data.get("frequency", "daily"),
+            preferred_time=data.get("preferred_time"),
+            fixed_time=time.fromisoformat(data["fixed_time"]) if data.get("fixed_time") else None,
+            due_date=date.fromisoformat(data["due_date"]) if data.get("due_date") else None,
+            last_completed=(date.fromisoformat(data["last_completed"])
+                            if data.get("last_completed") else None),
+        )
+
 
 @dataclass
 class Pet:
@@ -85,6 +117,19 @@ class Pet:
                 del self.tasks[i]
                 return
         raise ValueError(f"{self.name} has no task titled {title!r}")
+
+    def to_dict(self) -> dict:
+        return {"name": self.name, "species": self.species, "age": self.age,
+                "tasks": [task.to_dict() for task in self.tasks]}
+
+    @classmethod
+    def from_dict(cls, data: dict) -> Pet:
+        return cls(
+            name=data["name"],
+            species=data["species"],
+            age=data.get("age", 0),
+            tasks=[Task.from_dict(t) for t in data.get("tasks", [])],
+        )
 
 
 @dataclass
@@ -113,6 +158,41 @@ class Owner:
     def get_all_tasks(self) -> list[tuple[Pet, Task]]:
         """Return every (pet, task) pair across all of this owner's pets."""
         return [(pet, task) for pet in self.pets for task in pet.tasks]
+
+    def to_dict(self) -> dict:
+        return {
+            "name": self.name,
+            "available_minutes": self.available_minutes,
+            "day_start": self.day_start.isoformat(timespec="minutes"),
+            "preferences": list(self.preferences),
+            "pets": [pet.to_dict() for pet in self.pets],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> Owner:
+        return cls(
+            name=data["name"],
+            available_minutes=data.get("available_minutes", 120),
+            day_start=time.fromisoformat(data.get("day_start", "08:00")),
+            preferences=list(data.get("preferences", [])),
+            pets=[Pet.from_dict(p) for p in data.get("pets", [])],
+        )
+
+
+def save_owner(owner: Owner, path: str | Path) -> None:
+    """Save the owner, their pets and all tasks to a JSON file."""
+    path = Path(path)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(owner.to_dict(), indent=2), encoding="utf-8")
+    tmp.replace(path)  # write-then-rename, so a crash never leaves half a file
+
+
+def load_owner(path: str | Path) -> Owner | None:
+    """Load an owner saved by save_owner(), or return None if the file doesn't exist."""
+    path = Path(path)
+    if not path.exists():
+        return None
+    return Owner.from_dict(json.loads(path.read_text(encoding="utf-8")))
 
 
 @dataclass
