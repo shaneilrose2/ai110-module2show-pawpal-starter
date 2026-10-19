@@ -290,18 +290,19 @@ class Scheduler:
         return warnings
 
     def complete_task(self, pet_name: str, title: str, on: date) -> Task | None:
-        """Mark the given pet's open task as done (searches across all pets).
+        """Mark the given pet's task that is due on `on` as done (searches across all pets).
 
         For daily and weekly tasks, the next occurrence is added to the same pet
-        and returned. Raises ValueError if the pet has no open task with that title.
+        and returned. Raises ValueError if the pet has no task with that title due
+        that day, so completing the same task twice in one day is rejected.
         """
         for pet, task in self.owner.get_all_tasks():
-            if pet.name == pet_name and task.title == title and task.last_completed is None:
+            if pet.name == pet_name and task.title == title and task.is_due(on):
                 next_task = task.mark_complete(on)
                 if next_task is not None:
                     pet.add_task(next_task)
                 return next_task
-        raise ValueError(f"No open task {title!r} for {pet_name!r}")
+        raise ValueError(f"No task {title!r} due for {pet_name!r} on {on:%Y-%m-%d}")
 
     def _find_slot(self, busy: list[tuple[int, int]], duration: int) -> int | None:
         """Earliest start (minutes after midnight) from day_start that avoids busy blocks."""
