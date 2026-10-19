@@ -1,12 +1,9 @@
-"""PawPal+ core classes (skeletons generated from diagrams/uml.mmd).
-
-Attributes and method signatures only -- scheduling logic is not implemented yet.
-"""
+"""PawPal+ core classes: tasks, pets, owner and the daily scheduler (see diagrams/uml.mmd)."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import date, time
+from dataclasses import dataclass, field, replace
+from datetime import date, time, timedelta
 from enum import Enum
 
 
@@ -19,12 +16,14 @@ class Priority(Enum):
 
 
 VALID_FREQUENCIES = ("daily", "weekly", "once")
+REPEAT_EVERY = {"daily": timedelta(days=1), "weekly": timedelta(weeks=1)}
 
 
 @dataclass
 class Task:
-    """A single pet care task, e.g. a walk, feeding or medication.
+    """One occurrence of a pet care task, e.g. a walk, feeding or medication.
 
+    Completing a daily or weekly task creates a new Task for the next occurrence.
     A Task does not reference its Pet; Owner.get_all_tasks() pairs them instead.
     """
 
@@ -35,6 +34,7 @@ class Task:
     frequency: str = "daily"           # daily, weekly, once
     preferred_time: str | None = None  # morning, afternoon, evening, or None
     fixed_time: time | None = None     # must happen at exactly this time, e.g. meds at 08:00
+    due_date: date | None = None       # first day this occurrence is due; None = any day
     last_completed: date | None = None
 
     def __post_init__(self) -> None:
@@ -43,20 +43,23 @@ class Task:
         if self.frequency not in VALID_FREQUENCIES:
             raise ValueError(f"frequency must be one of {VALID_FREQUENCIES}")
 
-    def mark_complete(self, on: date) -> None:
-        """Record that this task was done on the given date."""
+    def mark_complete(self, on: date) -> Task | None:
+        """Record that this task was done on the given date.
+
+        Returns a new Task for the next occurrence (tomorrow for daily, in 7 days
+        for weekly), or None for a one-time task.
+        """
         self.last_completed = on
+        step = REPEAT_EVERY.get(self.frequency)
+        if step is None:
+            return None
+        return replace(self, due_date=on + step, last_completed=None)
 
     def is_due(self, on: date) -> bool:
-        """Return True if this task should be scheduled on the given date,
-        based on frequency and last_completed."""
-        if self.last_completed is None:
-            return True
-        if self.frequency == "once":
+        """Return True if this occurrence is not done yet and is due on or before the given date."""
+        if self.last_completed is not None:
             return False
-        if self.frequency == "weekly":
-            return (on - self.last_completed).days >= 7
-        return self.last_completed < on  # daily
+        return self.due_date is None or self.due_date <= on
 
 
 @dataclass
@@ -286,16 +289,19 @@ class Scheduler:
                 )
         return warnings
 
-    def complete_task(self, pet_name: str, title: str, on: date) -> None:
-        """Mark a task as done for the given pet (searches across all pets).
+    def complete_task(self, pet_name: str, title: str, on: date) -> Task | None:
+        """Mark the given pet's open task as done (searches across all pets).
 
-        Raises ValueError if no pet with that name has a task with that title.
+        For daily and weekly tasks, the next occurrence is added to the same pet
+        and returned. Raises ValueError if the pet has no open task with that title.
         """
         for pet, task in self.owner.get_all_tasks():
-            if pet.name == pet_name and task.title == title:
-                task.mark_complete(on)
-                return
-        raise ValueError(f"No task {title!r} for {pet_name!r}")
+            if pet.name == pet_name and task.title == title and task.last_completed is None:
+                next_task = task.mark_complete(on)
+                if next_task is not None:
+                    pet.add_task(next_task)
+                return next_task
+        raise ValueError(f"No open task {title!r} for {pet_name!r}")
 
     def _find_slot(self, busy: list[tuple[int, int]], duration: int) -> int | None:
         """Earliest start (minutes after midnight) from day_start that avoids busy blocks."""

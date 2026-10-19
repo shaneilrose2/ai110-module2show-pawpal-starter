@@ -91,14 +91,33 @@ tests\test_pawpal.py ....................                                       
 
 ## 📐 Smarter Scheduling
 
-> Fill in once you've implemented scheduling logic.
+All scheduling logic lives in `pawpal_system.py`. `Scheduler.generate_plan(on)` ties the features together: it gathers every pet's due tasks through `Owner.get_all_tasks()`, places fixed-time tasks first, fills the remaining time by priority, and records a reason for every scheduled or skipped task.
 
 | Feature | Method(s) | Notes |
 |---------|-----------|-------|
-| Task sorting | | e.g., by priority, duration |
-| Filtering | | e.g., skip tasks if time runs out |
-| Conflict handling | | e.g., overlapping time slots |
-| Recurring tasks | | e.g., daily vs. weekly |
+| Task sorting | `Scheduler.sort_by_priority()`, `Scheduler.sort_by_time()` | Priority: high → low, shorter task first on ties. Time: earliest `fixed_time` first, flexible tasks last (alphabetical). |
+| Filtering | `Scheduler.filter_tasks()`, `Scheduler.fit_to_time()`, `Task.is_due()` | Filter by pet name, completion status, or both. Tasks that don't fit the owner's available minutes are skipped with a reason. |
+| Conflict handling | `Scheduler.detect_conflicts()`, `Scheduler._find_slot()` | Warns when scheduled tasks overlap (e.g. two fixed-time tasks for different pets). Flexible tasks are placed in free gaps so they never overlap. |
+| Recurring tasks | `Task.mark_complete()`, `Scheduler.complete_task()` | Completing a daily or weekly task creates the next occurrence (`timedelta` of 1 day or 7 days). One-time tasks don't repeat. |
+
+### Sorting
+- **`sort_by_priority(tasks)`** orders tasks high → medium → low; ties go to the shorter task so more tasks fit in the day. `generate_plan` uses it to decide what gets scheduled first.
+- **`sort_by_time(tasks)`** orders tasks by `fixed_time`, earliest first, using `sorted()` with a tuple key. Tasks without a fixed time go last, in alphabetical order.
+
+### Filtering
+- **`filter_tasks(pet_name=None, completed=None, on=None)`** returns `(pet, task)` pairs across all pets. Pass a pet name, a completion status (done on that date, today by default), or both; leaving a filter as `None` skips it.
+- **`fit_to_time(tasks, minutes)`** keeps tasks, in order, while they still fit in the time left. Tasks that don't fit become `SkippedTask`s with a reason such as "Not enough available time: needs 40 min, only 10 min left."
+- **`Task.is_due(on)`** leaves out tasks that are already done or not due yet.
+
+### Conflict detection
+- **`detect_conflicts(plan)`** sorts the scheduled tasks by start time and returns a warning for every pair whose time ranges overlap, naming both tasks and pets, e.g. *"Conflict: Meds (Mochi) at 08:10 overlaps Feed (Biscuit) at 08:12."*
+- The scheduler keeps both conflicting tasks and warns instead of dropping one, so the owner decides.
+- **`_find_slot()`** places flexible tasks in the earliest free gap after the owner's `day_start`, so only fixed-time tasks can conflict.
+
+### Recurring tasks
+- **`Task.mark_complete(on)`** records the completion date and, for `daily` or `weekly` tasks, returns a copy due `on + timedelta(days=1)` or `on + timedelta(weeks=1)`. `once` tasks return `None`.
+- **`Scheduler.complete_task(pet_name, title, on)`** completes the pet's open task and adds the next occurrence to the same pet. The completed copy stays as history.
+- The next due date counts from the completion date, so a task done late shifts its cycle.
 
 ## 📸 Demo Walkthrough
 
